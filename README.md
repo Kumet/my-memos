@@ -72,10 +72,9 @@ Markdown ベースでメモを整理・検索するためのプライベート�
 - 別デバイスで編集する場合は、作業開始前に必ず `git pull` を実行しコンフリクトを回避。
 - `.gitignore` を活用し、個人設定や一時ファイル（例: `.DS_Store`）は除外しておく。
 
-## 自動チェック
-- `.github/workflows/markdown-quality.yml` で GitHub Actions を設定済みです。
-- `markdownlint` が Markdown のフォーマット違反を検知し、`lychee` がリンク切れをチェックします。
-- ワークフロー結果は GitHub の Actions タブで確認でき、失敗した場合は修正後に再度プッシュしてください。
+## 自動化
+- `.github/workflows/daily-auto-commit.yml` で日次の自動コミットを設定しています。Secrets で `PERSONAL_TOKEN` を登録すると、指定時刻に変更を検知してプッシュします。
+- Lint やリンクチェックは自動化していません。必要に応じて手動で `markdownlint` やリンクチェッカーを実行し、結果を確認してからコミットしてください。
 
 ## VS Code 推奨拡張
 - `Markdown All in One` … 見出しのショートカット、目次生成など Markdown 編集全般を強化。
