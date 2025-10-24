@@ -267,3 +267,204 @@ git init -b main
 - Docker ビルドキャッシュ最適化
 
 ---
+
+
+完璧です。
+uv に移行した場合の環境構築・依存管理を前提に、**Codexで使うプロンプト群（全8個）**を再構築しました。
+Poetry関連をすべて uv ベース（超高速Pythonパッケージマネージャ）に置き換えています。
+※uvのコマンド例は uv init, uv add, uv run, uv pip install, .python-version 管理などを前提。
+
+⸻
+
+✅ Codex用プロンプト一覧（uv対応）
+
+⸻
+
+PROMPT 1/8：DB・Alembic 基本（users / metrics 作成）
+
+目的：PostgreSQL接続・SQLAlchemy/Alembic初期化・users/metricsテーブル構築
+
+このプロジェクトで以下を実行して下さい（品質=Medium）:
+
+[要件]
+- backend=FastAPI(Python3.12, uv管理)
+- DB=PostgreSQL, マイグレーション=Alembic
+- 接続文字列: postgresql+psycopg://radb:radb@db:5432/radb
+- users/metrics のスキーマを作成し、Alembicで管理
+
+[作業]
+1) uvで依存を追加:
+   uv add fastapi "uvicorn[standard]" sqlalchemy psycopg[binary] alembic pydantic-settings passlib[bcrypt] python-jose[cryptography]
+   uv add --dev pytest httpx
+
+2) src/backend 配下に以下を作成:
+   - app/db/session.py: engine, SessionLocal, get_db関数（syncでOK）
+   - app/models/base.py: DeclarativeBase 定義
+   - app/models/user.py: email(unique,index), password_hash, role(enum:user|admin)
+   - app/models/metric.py: type(str,index), value(float), ts(datetime, index)
+
+3) Alembic 初期化:
+   uv run alembic init alembic
+   - alembic/env.py: Base.metadataをimportしてtarget_metadataに設定
+   - alembic.ini の sqlalchemy.url は環境変数読み込みに変更
+
+4) リビジョン作成:
+   uv run alembic revision -m "init users & metrics" → uv run alembic upgrade head
+
+5) app/core/config.py: 環境変数管理 (pydantic-settings)
+6) /health で DB 接続確認できるようにする
+
+[成果物]
+- users/metrics テーブル作成済み
+- alembic upgrade head 成功
+- README に「uvでの依存管理＋マイグレーション手順」追記
+
+
+⸻
+
+PROMPT 2/8：認証（JWT）
+
+以下を実行して下さい（品質=Medium）:
+
+[要件]
+- HS256 JWT でログイン実装
+- email/password → token 発行
+- 管理者ユーザー1件を起動時にseed投入
+
+[作業]
+1) app/core/security.py:
+   - create_access_token(), verify_password(), get_password_hash()
+2) app/schemas/auth.py: LoginRequest, TokenResponse
+3) app/api/auth.py: POST /auth/login 実装
+4) app/dependencies/auth.py: get_current_user(Bearer検証)
+5) app/db/seed.py: admin@example.com / adminpass / role=admin
+6) /metrics を認証必須に変更
+
+
+⸻
+
+PROMPT 3/8：Redis × WebSocket（1Hz 配信）
+
+以下を実装して下さい（品質=Medium）:
+
+[要件]
+- /ws/metrics?type=cpu で 1Hz 送信
+- Redis Pub/Sub 経由
+- DEV 時のみダミーデータを publish
+
+[作業]
+1) uv add redis
+2) app/ws/metrics.py:
+   - Redisから購読してクライアントへブロードキャスト
+   - 切断時クリーンアップ
+3) app/services/generator.py:
+   - 開発モードのみバックグラウンドで1Hz publish
+4) backend コンテナに REDIS_HOST/PORT 環境変数設定
+
+
+⸻
+
+PROMPT 4/8：フロント最小実装（ログイン→ダッシュボード）
+
+以下を実装して下さい（品質=Medium）:
+
+[要件]
+- React + Vite + TS
+- axios, react-query, zod, recharts
+- localStorage に token 保持
+- REST + WS でメトリクス表示
+
+[作業]
+1) src/frontend/src/lib/api.ts: axios設定＋Interceptor
+2) src/frontend/src/lib/ws.ts: WSラッパ（再接続）
+3) /login, /dashboard ページ作成
+   - login → JWT 保存
+   - dashboard → REST履歴取得＋WSリアルタイム
+4) .env.example に FRONTEND_URL 追記
+
+
+⸻
+
+PROMPT 5/8：Docker Compose 補強
+
+以下を実装して下さい（品質=Medium）:
+
+[要件]
+- backend, frontend, db, redis の4サービス
+- healthcheckあり、.env.exampleを読み込む
+
+[作業]
+1) docker-compose.yml:
+   - backend: depends_on に db/redisのhealthcheck
+   - backend command: uv run alembic upgrade head → uv run uvicorn app.main:app
+   - redis: healthcheck=redis-cli ping
+   - db: pg_isready
+2) backend Dockerfile:
+   - uv を使ったキャッシュ最適化 (uv sync --frozen)
+
+
+⸻
+
+PROMPT 6/8：pre-commit 導入
+
+以下を実装して下さい（品質=Medium）:
+
+[要件]
+- .pre-commit-config.yaml をルートに配置
+- hooks: pre-commit-hooks, ruff, black, prettier, eslint
+- backend の pyproject.toml で ruff/black 設定
+- frontend に eslint/prettier 設定
+
+[作業]
+1) uv add -G dev black ruff pre-commit
+2) ルートに .pre-commit-config.yaml
+3) src/frontend/.eslintrc.json, .prettierrc, .prettierignore 作成
+4) pre-commit install && pre-commit run --all-files
+
+
+⸻
+
+PROMPT 7/8：CI（GitHub Actions）
+
+以下を実装して下さい（品質=Medium）:
+
+[要件]
+- .github/workflows/ci.yml 作成
+- backend: uvで lint/test
+- frontend: pnpmで prettier/eslint/vitest
+
+[作業]
+1) backend:
+   - setup-python 3.12
+   - pip install uv
+   - uv sync --frozen
+   - uv run ruff check .
+   - uv run pytest
+2) frontend:
+   - setup-node 20
+   - pnpm install
+   - pnpm run lint
+   - pnpm run test
+
+
+⸻
+
+PROMPT 8/8：検証チェックリスト
+
+最後に以下を確認:
+
+- /auth/login: 成功/失敗パターン動作確認
+- /metrics: 認証必須・200 OK確認
+- /ws/metrics: 1Hz配信・再接続確認
+- pre-commit run --all-files → OK
+- docker compose up → healthy 全通過
+
+
+⸻
+
+🧠 運用ヒント
+	•	uvはCI/CDでもPoetryより軽量なので uv sync --frozen で環境固定を保ちやすい。
+	•	uv run alembic upgrade head を entrypoint に仕込むと自動マイグレーション。
+	•	Codexでは "このタスクは uv 環境で実行して" と毎回明記するとズレ防止になる。
+
+⸻
