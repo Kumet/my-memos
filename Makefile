@@ -1,6 +1,7 @@
-.PHONY: memo daily
+.PHONY: memo daily autopush
 
 DATE ?= $(shell date +"%Y-%m-%d")
+MESSAGE ?= Auto update $(shell date +"%Y-%m-%d %H:%M")
 
 memo:
 	@if [ -z "$(NAME)" ]; then \
@@ -32,3 +33,13 @@ memo:
 daily:
 	@date="$(DATE)"; \
 	make memo NAME="daily/$$date" TITLE="$(TITLE)"
+
+autopush:
+	@if git status --porcelain | grep . >/dev/null; then \
+		echo "Committing changes with message: $(MESSAGE)"; \
+		git add -A; \
+		git commit -m "$(MESSAGE)"; \
+		git push; \
+	else \
+		echo "No changes to commit"; \
+	fi
